@@ -1,5 +1,5 @@
 {
-  "name": "seed-element",
+  "name": "address-lookup",
   "version": "1.0.7",
   "authors": [
     "Anonymous <anonymous@example.com>"
@@ -10,9 +10,9 @@
     "polymer",
     "seed"
   ],
-  "main": "seed-element.html",
+  "main": "address-lookup.html",
   "license": "http://polymer.github.io/LICENSE.txt",
-  "homepage": "https://github.com/<USERNAME>/seed-element/",
+  "homepage": "https://github.com/farata/address-lookup/",
   "ignore": [
     "/.*",
     "/test/"

@@ -63,6 +63,10 @@ The element follows these rules in order to attempt to bias prediction results:
       is: 'address-lookup',
 
       properties: {
+        items: {
+          type: Array
+        },
+
         /**
          * Restricts predictions to the specified country (ISO 3166-1 Alpha-2
          * country code, case insensitive). Examples: `US`, `BR`, `RU`.
@@ -105,7 +109,10 @@ The element follows these rules in order to attempt to bias prediction results:
          * @private
          * @type {Position}
          */
-        currentPosition: Object,
+        currentPosition: {
+          type: Object,
+          observer: 'onPositionChange'
+        },
 
         /**
          * Result of reverse geocoding `currentPosition` with Google Maps API.
@@ -127,10 +134,6 @@ The element follows these rules in order to attempt to bias prediction results:
           computed: 'computeLocalSearch(state, currentLocation)'
         }
       },
-
-      observers: [
-        'onPositionChange(currentPosition)'
-      ],
 
       /**
        * Invoked when Google Maps API is loaded.
@@ -189,6 +192,11 @@ The element follows these rules in order to attempt to bias prediction results:
           console.log(JSON.stringify(predictions.map(function (p) {
             return p.description;
           }), null, 2));
+
+          this.items = predictions;
+          if (this.items.length > 0) {
+            this.$.box.open();
+          }
         }.bind(this));
       },
 

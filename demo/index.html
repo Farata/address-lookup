@@ -5,27 +5,21 @@
   <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
   <title>address-lookup Demo</title>
   <script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
+  <link rel="import" href="../../paper-styles/demo-pages.html">
+  <link rel="import" href="../../paper-input/paper-input.html">
   <link rel="import" href="../address-lookup.html">
 </head>
 <body unresolved>
   <template is="dom-bind">
     <div>
       <p>
-        You could optionally specify your Google Maps API key that will be used
-        for the requests. It will raise your quota limit and may improve accuracy.
-      </p>
-      <label>Google Maps API Key: <input type="text" value="{{apiKey}}"></label>
-    </div>
-
-    <div>
-      <p>
         The prediction results depend on the current user's location and the
         state specified for the element.
+        <paper-input label="State" type="text" bind-value="{{state}}"></paper-input>
       </p>
-      <label>State: <input type="text" value="{{state}}"></label>
     </div>
 
-    <div><address-lookup api-key="[[apiKey]]" state="NY"></address-lookup></div>
+    <div><address-lookup state="[[state]]"></address-lookup></div>
   </template>
 </body>
 </html>

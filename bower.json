@@ -1,8 +1,8 @@
 {
   "name": "address-lookup",
-  "version": "1.0.7",
+  "version": "1.0.0-alpha.1",
   "authors": [
-    "Anonymous <anonymous@example.com>"
+    "Anton Moiseev <a@antonmoiseev.com>"
   ],
   "description": "An element providing a solution to no problem in particular.",
   "keywords": [
@@ -18,7 +18,10 @@
     "/test/"
   ],
   "dependencies": {
-    "polymer": "Polymer/polymer#^1.2.0"
+    "polymer": "Polymer/polymer#^1.2.0",
+    "geo-location": "ebidel/geo-location#^1.0.3",
+    "google-apis": "GoogleWebComponents/google-apis#^1.1.5",
+    "vaadin-combo-box": "vaadin/vaadin-combo-box#^1.0.0-beta1"
   },
   "devDependencies": {
     "iron-component-page": "PolymerElements/iron-component-page#^1.0.0",

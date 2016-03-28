@@ -1,17 +1,36 @@
-<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../geo-location/geo-location.html">
+<link rel="import" href="../google-apis/google-maps-api.html">
+<link rel="import" href="../vaadin-combo-box/vaadin-combo-box.html">
 
 <!--
-An element providing a solution to no problem in particular.
+`address-lookup` is a combo box that provides a list of address predictions for
+the entered string value. Prediction results are provided by Google Maps API.
+For a production use you need to specify an [API key][key] issued by Google
+using `api-key` attribute.
+
+[key]: https://developers.google.com/places/web-service/get-api-key
 
 Example:
 
-    <address-lookup></address-lookup>
+    <address-lookup api-key="[[apiKey]]"></address-lookup>
 
-Example:
+The element follows these rules in order to attempt to bias prediction results:
 
-    <address-lookup>
-      <h2>Hello address-lookup</h2>
-    </address-lookup>
+1. If current user's location cannot be determined using the browser's
+   geolocation API then no assumptions are made by the element. Whatever Google
+   Maps API returns for the entered string is displayed to the user.
+
+2. If the element successfully determines the current user's location, it uses
+   its coordinate for biasing prediction results. Geo position accuracy is used
+   to limit the radius around the coordinates (_it doesn't prevent Google to
+   suggest addresses outside the radius_).
+
+3. If `state` property is specified and doesn't match the state of the current
+   user's location, the element uses geographical center coordinates of the
+   state for biasing results instead of the current user's location.
+
+4. If `country` is specified all prediction results are restricted to this
+   country.
 
 @demo demo/index.html
 @hero hero.svg
@@ -19,28 +38,24 @@ Example:
 
 <dom-module id="address-lookup">
   <template>
-    <style>
-      :host {
-        display: block;
-        box-sizing: border-box;
-      }
+    <geo-location
+        high-accuracy
+        position="{{currentPosition}}">
+    </geo-location>
 
-      .author img {
-        display: block;
-        float: left;
-        margin-right: 5px;
-        max-height: 100px;
-        max-width: 100px;
-      }
-    </style>
+    <google-maps-api
+        api-key="[[apiKey]]"
+        on-api-load="onApiLoad"
+        version="3.exp">
+    </google-maps-api>
 
-    <h1>&lt;address-lookup&gt;</h1>
-    <content></content>
-    <p class="author">
-      <img src$="{{author.image}}">
-      Cheers,<br/>
-      <span class="name">{{author.name}}</span>
-    </p>
+    <vaadin-combo-box
+        id="box"
+        items="[[items]]"
+        label="Enter your address"
+        item-label-path="description"
+        on-input="onInput">
+    </vaadin-combo-box>
   </template>
 
   <script>
@@ -49,92 +64,279 @@ Example:
 
       properties: {
         /**
-         * `fancy` indicates that the element should don a monocle and tophat,
-         * while checking its pocket watch.
+         * @private
          */
-        fancy: Boolean,
+        items: [],
 
         /**
-         * Describes the author of the element, but is really just an excuse to
-         * show off JSDoc annotations.
+         * Google Maps [API key][key].
          *
-         * @type {{name: string, image: string}}
+         * [key]: https://developers.google.com/places/web-service/get-api-key
+         *
+         * @type {String}
          */
-        author: {
-          type: Object,
-          // Use `value` to provide a default value for a property, by setting it
-          // on your element's prototype.
-          //
-          // If you provide a function, as we do here, Polymer will call that
-          // _per element instance_.
-          //
-          // We do that to ensure that each element gets its own copy of the
-          // value, rather than having it shared across all instances (via the
-          // prototype).
-          value: function() {
-            return {
-              name:  'Dimitri Glazkov',
-              image: 'http://addyosmani.com/blog/wp-content/uploads/2013/04/unicorn.jpg',
-            };
-          }
+        apiKey: {
+          type: String,
+          notify: false
         },
+
+        /**
+         * Restricts predictions to the specified country (ISO 3166-1 Alpha-2
+         * country code, case insensitive). Examples: `US`, `BR`, `RU`.
+         *
+         * @type {String}
+         */
+        country: {
+          type: String,
+          value: 'US',
+          notify: false
+        },
+
+        /**
+         * State for prediction biasing. Predictions will be biased towards the
+         * geographical center of the given state.
+         *
+         * @type {String}
+         */
+        state: {
+          type: String
+        },
+
+        /**
+         * @private
+         */
+        geographicalStateCenter: {
+          type: Object,
+          computed: 'computeGeographicalCenter(state)'
+        },
+
+        /**
+         * Represents Google Maps JavaScript API object. Initialized inside the
+         * element as soon as the API is loaded.
+         *
+         * @private
+         */
+        maps: {
+          type: Object,
+          readOnly: true
+        },
+
+        /**
+         * Geo location position determined using browser's API.
+         * @type {Position}
+         * @private
+         */
+        currentPosition: {
+          type: Object
+        },
+
+        /**
+         * @private
+         */
+        currentLocation: {
+          type: Object
+        },
+
+        searchWithinTheState: {
+          type: Boolean,
+          computed: 'computeSearchWithinTheState(state, currentLocation)'
+        }
       },
 
-      // Element Lifecycle
-
-      ready: function() {
-        // `ready` is called after all elements have been configured, but
-        // propagates bottom-up. This element's children are ready, but parents
-        // are not.
-        //
-        // This is the point where you should make modifications to the DOM (when
-        // necessary), or kick off any processes the element wants to perform.
-      },
-
-      attached: function() {
-        // `attached` fires once the element and its parents have been inserted
-        // into a document.
-        //
-        // This is a good place to perform any work related to your element's
-        // visual state or active behavior (measuring sizes, beginning animations,
-        // loading resources, etc).
-      },
-
-      detached: function() {
-        // The analog to `attached`, `detached` fires when the element has been
-        // removed from a document.
-        //
-        // Use this to clean up anything you did in `attached`.
-      },
-
-      // Element Behavior
+      observers: [
+        'onPositionChange(currentPosition)'
+      ],
 
       /**
-       * Sometimes it's just nice to say hi.
+       * Invoked when Google Maps API is loaded.
        *
-       * @param {string} greeting A positive greeting.
-       * @return {string} The full greeting.
+       * @private
        */
-      sayHello: function(greeting) {
-        var response = greeting || 'Hello World!';
-        return 'address-lookup says, ' + response;
+      onApiLoad: function () {
+        this.$$('geo-location').fetch();
+        this._setMaps(this.$$('google-maps-api').api);
+        this.autocompleteService = new this.maps.places.AutocompleteService();
       },
 
       /**
-       * The `address-lookup-lasers` event is fired whenever `fireLasers` is called.
-       *
-       * @event address-lookup-lasers
-       * @detail {{sound: String}}
+       * @param {String} state
+       * @param location
        */
+      computeSearchWithinTheState: function (state, location) {
+        return state && state.toUpperCase() === this.getStateFrom(location);
+      },
 
       /**
-       * Attempt to destroy this element's enemies with a beam of light!
-       *
-       * Or, at least, dispatch an event in the vain hope that someone else will
-       * do the zapping.
+       * @param geocoderResult An object returned by Google Maps Geocoder service.
        */
-      fireLasers: function() {
-        this.fire('address-lookup-lasers', {sound: 'Pew pew!'});
+      getStateFrom(geocoderResult) {
+        let state = geocoderResult.address_components.find(function (c) {
+            return c.types.indexOf('administrative_area_level_1') >= 0;
+        });
+        return state ? state.short_name : undefined;
+      },
+
+      /**
+       * @private
+       * @param {Position} position
+       */
+      onPositionChange: function (position) {
+        if (!position) return;
+        // TODO: wrap function into Promise, return result
+        this.reverseGeocode({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+      },
+
+      /**
+       * @private
+       * @param {{lat: Number, lng: Number}} coordinates
+       */
+      reverseGeocode: function (coordinates) {
+        if (!this.maps) return;
+
+        new this.maps.Geocoder().geocode({location: coordinates},
+            /**
+             * @param {Array} result
+             * @param {String} status
+             */
+            function (result, status) {
+              if (status === this.maps.GeocoderStatus.OK) {
+                this.currentLocation = result[0];
+              }
+            }.bind(this));
+      },
+
+      /**
+       * Invoked each time user types a new character in the combo box.
+       *
+       * @private
+       */
+      onInput: function (e) {
+        var value = e.target.value;
+        if (value) {
+          this.debounce('input', this.getPredictions.bind(this, value), 1000);
+        }
+      },
+
+      /**
+       * @private
+       * @param {String} value
+       */
+      getPredictions: function (value) {
+        this.log();
+
+        this.getPlacePredictions(this.createRequest(value))
+            .then(function (predictions) {
+              console.log(JSON.stringify(predictions.map(function (p) {
+                return p.description;
+              }), null, 2));
+            }.bind(this));
+      },
+
+      /**
+       * Creates an instance of AutocompletionRequest object.
+       *
+       * @private
+       * @return {google.maps.places.AutocompletionRequest}
+       */
+      createRequest: function (value) {
+        // Fixed part of the request.
+        var request = {
+          input: value,
+          types: ['geocode'],
+          componentRestrictions: {country: this.country}
+        };
+
+        var lat, lng, radius;
+        if (this.currentPosition && this.searchWithinTheState) {
+          lat = this.currentPosition.coords.latitude;
+          lng = this.currentPosition.coords.longitude;
+          radius = this.currentPosition.coords.accuracy;
+        } else if (this.state) {
+          lat = this.geographicalStateCenter.lat;
+          lng = this.geographicalStateCenter.lng;
+          radius = this.geographicalStateCenter.radius;
+        }
+
+        // If the current user's location is determined use it biasing
+        // predictions to this location.
+        if (this.currentPosition) {
+          request.radius = radius;
+          request.location = new this.maps.LatLng({lat: lat, lng: lng});
+        }
+        return request;
+      },
+
+
+      /**
+       * Wraps Google Maps API Places service's request.
+       *
+       * @private
+       * @param request
+       * @returns {*}
+       */
+      getPlacePredictions: function (request) {
+        return new Promise(function (resolve, reject) {
+          this.autocompleteService.getPlacePredictions(request,
+              function (predictions, status) {
+                if (status = this.maps.places.PlacesServiceStatus.OK) {
+                  resolve(predictions);
+                } else {
+                  reject(status);
+                }
+              }.bind(this));
+        }.bind(this));
+      },
+
+      /**
+       * @param {String} state
+       * @return {{lat: Number, lng: Number, radius: Number}}
+       */
+      computeGeographicalCenter: function (state) {
+        var coords = this.geoCentersMap[state] || [39.828175, -98.5795]; // US geo center
+        return {
+          lat: coords[0],
+          lng: coords[1],
+          radius: coords[2] || 50000 // default radius value
+        };
+      },
+
+      /**
+       * @private
+       */
+      geoCentersMap: {
+        // TODO: complete list of states
+        // lat, lng, radius (in meters)
+        AK: [64.731667, -152.47000, 50000],
+        AL: [32.834722, -86.633333],
+        AR: [34.742222, -92.285833],
+        AZ: [34.561389, -112.54000],
+        FL: [28.681389, -82.460000],
+        NY: [43.094722, -75.275833]
+      },
+
+      /**
+       * TEMP
+       * @private
+       */
+      log: function () {
+        // TODO: REMOVE THIS METHOD
+
+        console.log(`State: ${this.state}`);
+        console.log(`Search within the state: ${this.searchWithinTheState}`);
+
+        if (this.currentPosition)
+          console.log('Current position: %s, %s',
+              this.currentPosition.coords.latitude,
+              this.currentPosition.coords.longitude);
+
+        if (this.currentLocation)
+          console.log('Current location (%s, %s): %s',
+              this.currentLocation.geometry.location.lat(),
+              this.currentLocation.geometry.location.lng(),
+              this.currentLocation.formatted_address);
       }
     });
   </script>

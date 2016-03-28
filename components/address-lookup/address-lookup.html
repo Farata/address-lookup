@@ -1,0 +1,345 @@
+<link rel="import" href="../geo-location/geo-location.html">
+<link rel="import" href="../google-apis/google-maps-api.html">
+<link rel="import" href="../vaadin-combo-box/vaadin-combo-box.html">
+
+<!--
+`address-lookup` is a combo box that provides a list of address predictions for
+the entered string value. Prediction results are provided by Google Maps API.
+For a production use you need to specify an [API key][key] issued by Google
+using `api-key` attribute.
+
+[key]: https://developers.google.com/places/web-service/get-api-key
+
+Example:
+
+    <address-lookup api-key="[[apiKey]]"></address-lookup>
+
+The element follows these rules in order to attempt to bias prediction results:
+
+1. If current user's location cannot be determined using the browser's
+   geolocation API then no assumptions are made by the element. Whatever Google
+   Maps API returns for the entered string is displayed to the user.
+
+2. If the element successfully determines the current user's location, it uses
+   its coordinate for biasing prediction results. Geo position accuracy is used
+   to limit the radius around the coordinates (_it doesn't prevent Google to
+   suggest addresses outside the radius_).
+
+3. If `state` property is specified and doesn't match the state of the current
+   user's location, the element uses geographical center coordinates of the
+   state for biasing results instead of the current user's location.
+
+4. If `country` is specified all prediction results are restricted to this
+   country.
+
+@demo demo/index.html
+@hero hero.svg
+-->
+
+<dom-module id="address-lookup">
+  <template>
+    <geo-location
+        high-accuracy
+        position="{{currentPosition}}">
+    </geo-location>
+
+    <google-maps-api
+        api-key="[[apiKey]]"
+        on-api-load="onApiLoad"
+        version="3.exp">
+    </google-maps-api>
+
+    <vaadin-combo-box
+        id="box"
+        items="[[items]]"
+        label="Enter your address"
+        item-label-path="description"
+        on-input="onInput">
+    </vaadin-combo-box>
+  </template>
+
+  <script>
+    Polymer({
+      is: 'address-lookup',
+
+      properties: {
+        items: {
+          type: Array
+        },
+
+        /**
+         * Restricts predictions to the specified country (ISO 3166-1 Alpha-2
+         * country code, case insensitive). Examples: `US`, `BR`, `RU`.
+         *
+         * @type {String}
+         */
+        country: {
+          type: String,
+          value: 'US'
+        },
+
+        /**
+         * State for prediction biasing. Predictions will be biased towards the
+         * geographical center of the given state.
+         *
+         * @type {String}
+         */
+        state: String,
+
+        /**
+         * Google Maps [API key][key].
+         *
+         * [key]: https://developers.google.com/places/web-service/get-api-key
+         *
+         * @type {String}
+         */
+        apiKey: String,
+
+        /**
+         * Represents Google Maps JavaScript API object. Initialized inside the
+         * element as soon as the API is loaded.
+         *
+         * @private
+         */
+        maps: Object,
+
+        /**
+         * Current user's geo position determined using browser's API.
+         *
+         * @private
+         * @type {Position}
+         */
+        currentPosition: {
+          type: Object,
+          observer: 'onPositionChange'
+        },
+
+        /**
+         * Result of reverse geocoding `currentPosition` with Google Maps API.
+         *
+         * @private
+         */
+        currentLocation: Object,
+
+        /**
+         * Indicates whether the prediction results should be biased to the
+         * current user's location.
+         *
+         * @private
+         * @type {Boolean}
+         */
+        localSearch: {
+          type: Boolean,
+          value: true,
+          computed: 'computeLocalSearch(state, currentLocation)'
+        }
+      },
+
+      /**
+       * Invoked when Google Maps API is loaded.
+       *
+       * @private
+       */
+      onApiLoad: function () {
+        this.$$('geo-location').fetch();
+        this.maps = this.$$('google-maps-api').api;
+        this.autocompleteService = new this.maps.places.AutocompleteService();
+      },
+
+      /**
+       * @private
+       * @param {Position} position
+       */
+      onPositionChange: function (position) {
+        if (!position) return;
+        // TODO: wrap function into Promise, return result
+        this.reverseGeocode({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+      },
+
+      /**
+       * @private
+       * @param {String} state
+       * @param location
+       */
+      computeLocalSearch: function (state, location) {
+        return !state || state.toUpperCase() === this.getStateFrom(location);
+      },
+
+      /**
+       * Invoked each time user types a new character in the combo box.
+       *
+       * @private
+       */
+      onInput: function (e) {
+        var inputText = e.target.value;
+        if (inputText) {
+          this.debounce('input', this.populateDropdown.bind(this, inputText), 1000);
+        }
+      },
+
+      /**
+       * @private
+       * @param {String} inputText
+       */
+      populateDropdown: function (inputText) {
+        this.log();
+
+        let request = this.createAutocompletionRequest(inputText);
+        this.getPlacePredictions(request).then(function (predictions) {
+          console.log(JSON.stringify(predictions.map(function (p) {
+            return p.description;
+          }), null, 2));
+
+          this.items = predictions;
+          if (this.items.length > 0) {
+            this.$.box.open();
+          }
+        }.bind(this));
+      },
+
+      /************************************************
+       *               Helper functions               *
+       ************************************************/
+
+      /**
+       * Wraps Google Maps API Places service's request.
+       *
+       * @private
+       * @param request
+       * @returns {*}
+       */
+      getPlacePredictions: function (request) {
+        return new Promise(function (resolve, reject) {
+          this.autocompleteService.getPlacePredictions(request,
+              function (predictions, status) {
+                if (status = this.maps.places.PlacesServiceStatus.OK) {
+                  resolve(predictions);
+                } else {
+                  reject(status);
+                }
+              }.bind(this));
+        }.bind(this));
+      },
+
+      /**
+       * Creates an instance of AutocompletionRequest object.
+       *
+       * @private
+       */
+      createAutocompletionRequest: function (inputText) {
+        // Fixed part of the request.
+        var request = {
+          input: inputText,
+          types: ['geocode'],
+          componentRestrictions: {country: this.country}
+        };
+
+        var coords;
+
+        // If the current user's location is determined and it's within the
+        // specified state (see properties), initialize the request with current
+        // user's coordinates.
+        if (this.currentPosition && this.localSearch) {
+          coords = this.currentPosition.coords;
+          request.radius = coords.accuracy;
+          request.location = new this.maps.LatLng({
+            lat: coords.latitude,
+            lng: coords.longitude
+          });
+        }
+        // Otherwise if the state is explicitly set search within this state.
+        else if (this.state) {
+          coords = this.getGeographicalCenter(this.state.toUpperCase());
+          request.radius = coords.radius;
+          request.location = new this.maps.LatLng({
+            lat: coords.lat,
+            lng: coords.lng
+          });
+        }
+
+        return request;
+      },
+
+      /**
+       * @param {String} state
+       * @return {{lat: Number, lng: Number, radius: Number}}
+       */
+      getGeographicalCenter: function (state) {
+        var coords = this.geoCentersMap[state] || [39.828175, -98.5795]; // US geo center
+        return {
+          lat: coords[0],
+          lng: coords[1],
+          radius: coords[2] || 50000 // default radius value
+        };
+      },
+
+      /**
+       * @private
+       */
+      geoCentersMap: {
+        // TODO: complete list of states
+        // lat, lng, radius (in meters, optional)
+        AK: [64.731667, -152.47000, 50000],
+        AL: [32.834722, -86.633333],
+        AR: [34.742222, -92.285833],
+        AZ: [34.561389, -112.54000],
+        FL: [28.681389, -82.460000],
+        NY: [43.094722, -75.275833]
+      },
+
+      /**
+       * @private
+       * @param {{lat: Number, lng: Number}} coordinates
+       */
+      reverseGeocode: function (coordinates) {
+        if (!this.maps) return;
+
+        new this.maps.Geocoder().geocode({location: coordinates},
+            /**
+             * @param {Array} result
+             * @param {String} status
+             */
+            function (result, status) {
+              if (status === this.maps.GeocoderStatus.OK) {
+                this.currentLocation = result[0];
+              }
+            }.bind(this));
+      },
+
+      /**
+       * @param geocoderResult An object returned by Google Maps Geocoder service.
+       */
+      getStateFrom(geocoderResult) {
+        let state = geocoderResult.address_components.find(function (c) {
+          return c.types.indexOf('administrative_area_level_1') >= 0;
+        });
+        return state ? state.short_name : undefined;
+      },
+
+      /**
+       * TEMP
+       * @private
+       */
+      log: function () {
+        // TODO: REMOVE THIS METHOD
+
+        console.log(`State: ${this.state}`);
+        console.log(`Local search: ${this.localSearch}`);
+
+        if (this.currentPosition)
+          console.log('Current position: %s, %s',
+              this.currentPosition.coords.latitude,
+              this.currentPosition.coords.longitude);
+
+        if (this.currentLocation)
+          console.log('Current location (%s, %s): %s',
+              this.currentLocation.geometry.location.lat(),
+              this.currentLocation.geometry.location.lng(),
+              this.currentLocation.formatted_address);
+      }
+    });
+  </script>
+</dom-module>

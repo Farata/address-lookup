@@ -1,0 +1,39 @@
+{
+  "name": "address-lookup",
+  "authors": [
+    "Anton Moiseev <a@antonmoiseev.com>"
+  ],
+  "description": "An element providing a solution to no problem in particular.",
+  "keywords": [
+    "web-component",
+    "polymer",
+    "seed"
+  ],
+  "main": "address-lookup.html",
+  "license": "http://polymer.github.io/LICENSE.txt",
+  "homepage": "https://github.com/farata/address-lookup/",
+  "ignore": [
+    "/.*",
+    "/test/"
+  ],
+  "dependencies": {
+    "polymer": "Polymer/polymer#^1.2.0",
+    "geo-location": "ebidel/geo-location#^1.0.3",
+    "google-apis": "GoogleWebComponents/google-apis#^1.1.5",
+    "vaadin-combo-box": "vaadin/vaadin-combo-box#^1.0.0-beta1"
+  },
+  "devDependencies": {
+    "iron-component-page": "PolymerElements/iron-component-page#^1.0.0",
+    "web-component-tester": "^4.0.0"
+  },
+  "_release": "402c5cce40",
+  "_resolution": {
+    "type": "branch",
+    "branch": "master",
+    "commit": "402c5cce402a8a07012bb044d3c62cd53655872c"
+  },
+  "_source": "git://github.com/farata/address-lookup.git",
+  "_target": "master",
+  "_originalSource": "farata/address-lookup",
+  "_direct": true
+}

@@ -64,23 +64,6 @@ The element follows these rules in order to attempt to bias prediction results:
 
       properties: {
         /**
-         * @private
-         */
-        items: [],
-
-        /**
-         * Google Maps [API key][key].
-         *
-         * [key]: https://developers.google.com/places/web-service/get-api-key
-         *
-         * @type {String}
-         */
-        apiKey: {
-          type: String,
-          notify: false
-        },
-
-        /**
          * Restricts predictions to the specified country (ISO 3166-1 Alpha-2
          * country code, case insensitive). Examples: `US`, `BR`, `RU`.
          *
@@ -88,8 +71,7 @@ The element follows these rules in order to attempt to bias prediction results:
          */
         country: {
           type: String,
-          value: 'US',
-          notify: false
+          value: 'US'
         },
 
         /**
@@ -98,17 +80,16 @@ The element follows these rules in order to attempt to bias prediction results:
          *
          * @type {String}
          */
-        state: {
-          type: String
-        },
+        state: String,
 
         /**
-         * @private
+         * Google Maps [API key][key].
+         *
+         * [key]: https://developers.google.com/places/web-service/get-api-key
+         *
+         * @type {String}
          */
-        geographicalStateCenter: {
-          type: Object,
-          computed: 'computeGeographicalCenter(state)'
-        },
+        apiKey: String,
 
         /**
          * Represents Google Maps JavaScript API object. Initialized inside the
@@ -116,30 +97,34 @@ The element follows these rules in order to attempt to bias prediction results:
          *
          * @private
          */
-        maps: {
-          type: Object,
-          readOnly: true
-        },
+        maps: Object,
 
         /**
-         * Geo location position determined using browser's API.
+         * Current user's geo position determined using browser's API.
+         *
+         * @private
          * @type {Position}
-         * @private
          */
-        currentPosition: {
-          type: Object
-        },
+        currentPosition: Object,
 
         /**
+         * Result of reverse geocoding `currentPosition` with Google Maps API.
+         *
          * @private
          */
-        currentLocation: {
-          type: Object
-        },
+        currentLocation: Object,
 
-        searchWithinTheState: {
+        /**
+         * Indicates whether the prediction results should be biased to the
+         * current user's location.
+         *
+         * @private
+         * @type {Boolean}
+         */
+        localSearch: {
           type: Boolean,
-          computed: 'computeSearchWithinTheState(state, currentLocation)'
+          value: true,
+          computed: 'computeLocalSearch(state, currentLocation)'
         }
       },
 
@@ -154,26 +139,8 @@ The element follows these rules in order to attempt to bias prediction results:
        */
       onApiLoad: function () {
         this.$$('geo-location').fetch();
-        this._setMaps(this.$$('google-maps-api').api);
+        this.maps = this.$$('google-maps-api').api;
         this.autocompleteService = new this.maps.places.AutocompleteService();
-      },
-
-      /**
-       * @param {String} state
-       * @param location
-       */
-      computeSearchWithinTheState: function (state, location) {
-        return state && state.toUpperCase() === this.getStateFrom(location);
-      },
-
-      /**
-       * @param geocoderResult An object returned by Google Maps Geocoder service.
-       */
-      getStateFrom(geocoderResult) {
-        let state = geocoderResult.address_components.find(function (c) {
-            return c.types.indexOf('administrative_area_level_1') >= 0;
-        });
-        return state ? state.short_name : undefined;
       },
 
       /**
@@ -191,21 +158,11 @@ The element follows these rules in order to attempt to bias prediction results:
 
       /**
        * @private
-       * @param {{lat: Number, lng: Number}} coordinates
+       * @param {String} state
+       * @param location
        */
-      reverseGeocode: function (coordinates) {
-        if (!this.maps) return;
-
-        new this.maps.Geocoder().geocode({location: coordinates},
-            /**
-             * @param {Array} result
-             * @param {String} status
-             */
-            function (result, status) {
-              if (status === this.maps.GeocoderStatus.OK) {
-                this.currentLocation = result[0];
-              }
-            }.bind(this));
+      computeLocalSearch: function (state, location) {
+        return !state || state.toUpperCase() === this.getStateFrom(location);
       },
 
       /**
@@ -214,61 +171,30 @@ The element follows these rules in order to attempt to bias prediction results:
        * @private
        */
       onInput: function (e) {
-        var value = e.target.value;
-        if (value) {
-          this.debounce('input', this.getPredictions.bind(this, value), 1000);
+        var inputText = e.target.value;
+        if (inputText) {
+          this.debounce('input', this.populateDropdown.bind(this, inputText), 1000);
         }
       },
 
       /**
        * @private
-       * @param {String} value
+       * @param {String} inputText
        */
-      getPredictions: function (value) {
+      populateDropdown: function (inputText) {
         this.log();
 
-        this.getPlacePredictions(this.createRequest(value))
-            .then(function (predictions) {
-              console.log(JSON.stringify(predictions.map(function (p) {
-                return p.description;
-              }), null, 2));
-            }.bind(this));
+        let request = this.createAutocompletionRequest(inputText);
+        this.getPlacePredictions(request).then(function (predictions) {
+          console.log(JSON.stringify(predictions.map(function (p) {
+            return p.description;
+          }), null, 2));
+        }.bind(this));
       },
 
-      /**
-       * Creates an instance of AutocompletionRequest object.
-       *
-       * @private
-       * @return {google.maps.places.AutocompletionRequest}
-       */
-      createRequest: function (value) {
-        // Fixed part of the request.
-        var request = {
-          input: value,
-          types: ['geocode'],
-          componentRestrictions: {country: this.country}
-        };
-
-        var lat, lng, radius;
-        if (this.currentPosition && this.searchWithinTheState) {
-          lat = this.currentPosition.coords.latitude;
-          lng = this.currentPosition.coords.longitude;
-          radius = this.currentPosition.coords.accuracy;
-        } else if (this.state) {
-          lat = this.geographicalStateCenter.lat;
-          lng = this.geographicalStateCenter.lng;
-          radius = this.geographicalStateCenter.radius;
-        }
-
-        // If the current user's location is determined use it biasing
-        // predictions to this location.
-        if (this.currentPosition) {
-          request.radius = radius;
-          request.location = new this.maps.LatLng({lat: lat, lng: lng});
-        }
-        return request;
-      },
-
+      /************************************************
+       *               Helper functions               *
+       ************************************************/
 
       /**
        * Wraps Google Maps API Places service's request.
@@ -291,10 +217,49 @@ The element follows these rules in order to attempt to bias prediction results:
       },
 
       /**
+       * Creates an instance of AutocompletionRequest object.
+       *
+       * @private
+       */
+      createAutocompletionRequest: function (inputText) {
+        // Fixed part of the request.
+        var request = {
+          input: inputText,
+          types: ['geocode'],
+          componentRestrictions: {country: this.country}
+        };
+
+        var coords;
+
+        // If the current user's location is determined and it's within the
+        // specified state (see properties), initialize the request with current
+        // user's coordinates.
+        if (this.currentPosition && this.localSearch) {
+          coords = this.currentPosition.coords;
+          request.radius = coords.accuracy;
+          request.location = new this.maps.LatLng({
+            lat: coords.latitude,
+            lng: coords.longitude
+          });
+        }
+        // Otherwise if the state is explicitly set search within this state.
+        else if (this.state) {
+          coords = this.getGeographicalCenter(this.state.toUpperCase());
+          request.radius = coords.radius;
+          request.location = new this.maps.LatLng({
+            lat: coords.lat,
+            lng: coords.lng
+          });
+        }
+
+        return request;
+      },
+
+      /**
        * @param {String} state
        * @return {{lat: Number, lng: Number, radius: Number}}
        */
-      computeGeographicalCenter: function (state) {
+      getGeographicalCenter: function (state) {
         var coords = this.geoCentersMap[state] || [39.828175, -98.5795]; // US geo center
         return {
           lat: coords[0],
@@ -308,13 +273,42 @@ The element follows these rules in order to attempt to bias prediction results:
        */
       geoCentersMap: {
         // TODO: complete list of states
-        // lat, lng, radius (in meters)
+        // lat, lng, radius (in meters, optional)
         AK: [64.731667, -152.47000, 50000],
         AL: [32.834722, -86.633333],
         AR: [34.742222, -92.285833],
         AZ: [34.561389, -112.54000],
         FL: [28.681389, -82.460000],
         NY: [43.094722, -75.275833]
+      },
+
+      /**
+       * @private
+       * @param {{lat: Number, lng: Number}} coordinates
+       */
+      reverseGeocode: function (coordinates) {
+        if (!this.maps) return;
+
+        new this.maps.Geocoder().geocode({location: coordinates},
+            /**
+             * @param {Array} result
+             * @param {String} status
+             */
+            function (result, status) {
+              if (status === this.maps.GeocoderStatus.OK) {
+                this.currentLocation = result[0];
+              }
+            }.bind(this));
+      },
+
+      /**
+       * @param geocoderResult An object returned by Google Maps Geocoder service.
+       */
+      getStateFrom(geocoderResult) {
+        let state = geocoderResult.address_components.find(function (c) {
+          return c.types.indexOf('administrative_area_level_1') >= 0;
+        });
+        return state ? state.short_name : undefined;
       },
 
       /**
@@ -325,7 +319,7 @@ The element follows these rules in order to attempt to bias prediction results:
         // TODO: REMOVE THIS METHOD
 
         console.log(`State: ${this.state}`);
-        console.log(`Search within the state: ${this.searchWithinTheState}`);
+        console.log(`Local search: ${this.localSearch}`);
 
         if (this.currentPosition)
           console.log('Current position: %s, %s',

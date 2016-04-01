@@ -346,7 +346,7 @@ The element follows these rules in order to attempt to bias prediction results:
        * @param geocoderResult An object returned by Google Maps Geocoder service.
        */
       getStateFrom: function (geocoderResult) {
-        let state = geocoderResult.address_components.find(function (c) {
+        var state = geocoderResult.address_components.find(function (c) {
           return c.types.indexOf('administrative_area_level_1') >= 0;
         });
         return state ? state.short_name : undefined;

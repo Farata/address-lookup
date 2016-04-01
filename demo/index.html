@@ -7,19 +7,48 @@
   <script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
   <link rel="import" href="../../paper-styles/demo-pages.html">
   <link rel="import" href="../../paper-input/paper-input.html">
+  <link rel="import" href="../../paper-button/paper-button.html">
   <link rel="import" href="../address-lookup.html">
 </head>
 <body unresolved>
-  <template is="dom-bind">
-    <div>
-      <p>
-        The prediction results depend on the current user's location and the
-        state specified for the element.
-        <paper-input label="State" type="text" value="{{state::change}}"></paper-input>
-      </p>
-    </div>
 
-    <div><address-lookup state="[[state]]"></address-lookup></div>
-  </template>
+  <demo-page></demo-page>
+
+  <dom-module id="demo-page">
+    <template>
+      <div>
+        The prediction results depend on the current user's location and the state
+        specified for the element.
+
+        <paper-input
+            label="State"
+            type="text"
+            value="{{state::change}}">
+        </paper-input>
+      </div>
+
+      <pre>[[value]]</pre>
+
+      <address-lookup
+          label="Enter Zip or City, State"
+          predictions-type="(regions)"
+          state="[[state]]"
+          value="{{value}}"
+          selected-item="{{selectedItem}}">
+      </address-lookup>
+
+    </template>
+
+    <script>
+      Polymer({
+        is: 'demo-page',
+
+        onSubmit: function () {
+          console.log(this.value);
+          console.log(this.selectedItem);
+        }
+      });
+    </script>
+  </dom-module>
 </body>
 </html>

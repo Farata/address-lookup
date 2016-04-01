@@ -51,10 +51,14 @@ The element follows these rules in order to attempt to bias prediction results:
 
     <vaadin-combo-box
         id="box"
-        items="[[items]]"
-        label="Enter your address"
+        disabled="[[disabled]]"
         item-label-path="description"
-        on-input="onInput">
+        item-value-path="description"
+        items="[[items]]"
+        label="[[label]]"
+        on-input="onInput"
+        selected-item="{{selectedItem}}"
+        value="{{value}}">
     </vaadin-combo-box>
   </template>
 
@@ -63,8 +67,42 @@ The element follows these rules in order to attempt to bias prediction results:
       is: 'address-lookup',
 
       properties: {
+        /**
+         * The label for this combo box.
+         */
+        label: String,
+
+        value: {
+          type: Object,
+          notify: true
+        },
+
+        selectedItem: {
+          type: Object,
+          notify: true
+        },
+
         items: {
-          type: Array
+          type: Array,
+          value: null
+        },
+
+        debounceTime: {
+          type: Number,
+          value: 300
+        },
+
+        disabled: Boolean,
+
+        /**
+         * establishment, geocode, (regions), (cities)
+         * see Google Maps API [docs][docs]
+         *
+         * [docs]: https://developers.google.com/maps/documentation/javascript/3.exp/reference#AutocompletionRequest
+         */
+        predictionsType: {
+          type: String,
+          value: 'geocode'
         },
 
         /**
@@ -176,7 +214,7 @@ The element follows these rules in order to attempt to bias prediction results:
       onInput: function (e) {
         var inputText = e.target.value;
         if (inputText) {
-          this.debounce('input', this.populateDropdown.bind(this, inputText), 1000);
+          this.debounce('input', this.populateDropdown.bind(this, inputText), this.debounceTime);
         }
       },
 
@@ -185,18 +223,13 @@ The element follows these rules in order to attempt to bias prediction results:
        * @param {String} inputText
        */
       populateDropdown: function (inputText) {
-        this.log();
-
         let request = this.createAutocompletionRequest(inputText);
         this.getPlacePredictions(request).then(function (predictions) {
-          console.log(JSON.stringify(predictions.map(function (p) {
-            return p.description;
-          }), null, 2));
-
+          predictions.forEach(function (p) {
+            var stateTerm = p.terms[p.terms.length - 2];
+            p.description = p.description.substring(0, stateTerm.offset + stateTerm.value.length);
+          });
           this.items = predictions;
-          if (this.items.length > 0) {
-            this.$.box.open();
-          }
         }.bind(this));
       },
 
@@ -233,7 +266,7 @@ The element follows these rules in order to attempt to bias prediction results:
         // Fixed part of the request.
         var request = {
           input: inputText,
-          types: ['geocode'],
+          types: [this.predictionsType],
           componentRestrictions: {country: this.country}
         };
 
@@ -317,28 +350,6 @@ The element follows these rules in order to attempt to bias prediction results:
           return c.types.indexOf('administrative_area_level_1') >= 0;
         });
         return state ? state.short_name : undefined;
-      },
-
-      /**
-       * TEMP
-       * @private
-       */
-      log: function () {
-        // TODO: REMOVE THIS METHOD
-
-        console.log(`State: ${this.state}`);
-        console.log(`Local search: ${this.localSearch}`);
-
-        if (this.currentPosition)
-          console.log('Current position: %s, %s',
-              this.currentPosition.coords.latitude,
-              this.currentPosition.coords.longitude);
-
-        if (this.currentLocation)
-          console.log('Current location (%s, %s): %s',
-              this.currentLocation.geometry.location.lat(),
-              this.currentLocation.geometry.location.lng(),
-              this.currentLocation.formatted_address);
       }
     });
   </script>

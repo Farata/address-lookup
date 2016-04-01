@@ -223,7 +223,7 @@ The element follows these rules in order to attempt to bias prediction results:
        * @param {String} inputText
        */
       populateDropdown: function (inputText) {
-        let request = this.createAutocompletionRequest(inputText);
+        var request = this.createAutocompletionRequest(inputText);
         this.getPlacePredictions(request).then(function (predictions) {
           predictions.forEach(function (p) {
             var stateTerm = p.terms[p.terms.length - 2];
@@ -345,7 +345,7 @@ The element follows these rules in order to attempt to bias prediction results:
       /**
        * @param geocoderResult An object returned by Google Maps Geocoder service.
        */
-      getStateFrom(geocoderResult) {
+      getStateFrom: function (geocoderResult) {
         let state = geocoderResult.address_components.find(function (c) {
           return c.types.indexOf('administrative_area_level_1') >= 0;
         });

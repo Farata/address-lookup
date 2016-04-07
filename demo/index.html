@@ -40,13 +40,15 @@
     </template>
 
     <script>
-      Polymer({
-        is: 'demo-page',
+      window.addEventListener('WebComponentsReady', function () {
+        Polymer({
+          is: 'demo-page',
 
-        onSubmit: function () {
-          console.log(this.value);
-          console.log(this.selectedItem);
-        }
+          onSubmit: function () {
+            console.log(this.value);
+            console.log(this.selectedItem);
+          }
+        });
       });
     </script>
   </dom-module>
